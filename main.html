@@ -1,21 +1,1320 @@
 <!DOCTYPE html>
 
+<!--
+    Started Oct 27, 2023
+    Finished Oct 28, 2023
+    Released Oct 28, 2023
+
+    This program is based on another game with the same concept that I made a few years ago. You can play the original here:
+    https://khanacademy.org/cs/i/4898411706859520
+-->
+
 <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Tangrams 2 | Khantober</title>
+        
+        <!-- turn off scroll bars -->
+        <style>
+			body {
+                overflow: hidden;
+            }
+            
+            canvas{
+                position: absolute;
+                left: 0px;
+                top: 0px;
+            }
+        </style>
+        
+		<!-- canvas -->
+        <canvas id="canvas"></canvas>
+        
+        <!-- set up HTML canvas -->
+        <script>
+            var canvas = document.getElementById("canvas");
 
-  <head>
+            canvas.width = window.innerWidth;
+            canvas.height = 600;
 
-    <style>
-      p: {
-        color: rgb(255, 0, 0);
-      }
-    </style>
-  
-  </head>
+            canvas.style.left = window.innerWidth / 2 - canvas.width / 2 + "px";
+            canvas.style.top = window.innerHeight / 2 - canvas.height / 2 + "px";
+            
+            var width = canvas.width, height = canvas.height;
+            var ctx = canvas.getContext("2d");
+        </script>
+        
+        <!-- functions for drawing on the canvas -->
+        <script>
+            // convert to hexadecimal
+			var toHex = function(num){
+				var chars = "0123456789ABCDEF";
+				
+				return chars[(num-(num%16))/16]+chars[num%16];
+			};
+            
+            // make colors
+			var color = function(r, g, b, a){
+				if(g === undefined && b === undefined && a === undefined){
+					g = r;
+					b = r;
+					a = 255;
+				}
+				if(b === undefined && a === undefined){
+					a = g;
+					g = r;
+					b = r;
+				}
+				if(a === undefined){
+					a = 255;
+				}
+				
+				ctx.globalAlpha = a/255;
+				return "#"+toHex(r)+toHex(g)+toHex(b);
+			};
+			var fill = function(r, g, b, a){
+				if(typeof r === "string"){
+					ctx.fillStyle = r;
+				}
+				
+				else{
+					if(g === undefined && b === undefined && a === undefined){
+						g = r;
+						b = r;
+						a = 255;
+					}
+					if(b === undefined && a === undefined){
+						a = g;
+						g = r;
+						b = r;
+					}
+					if(a === undefined){
+						a = 255;
+					}
+					
+					ctx.globalAlpha = a/255;
+					ctx.fillStyle = "#"+toHex(r)+toHex(g)+toHex(b);
+				}
+			};
+			var stroke = function(r, g, b){
+				if(typeof r === "string"){
+					ctx.strokeStyle = r;
+				}
+				
+				else{
+					if(g === undefined || b === undefined){
+						g = r;
+						b = r;
+					}
+					
+					ctx.strokeStyle = "#"+toHex(r)+toHex(g)+toHex(b);
+				}
+			};
+			
+			// arcs and ellipses
+			var arc = function(x, y, w, h, start, stop){
+			    if(w < 0){
+			        w = 0;
+			    }
+			    
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.scale(1, h/w);
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, w/2, start * Math.PI / 180, stop * Math.PI / 180)
+                ctx.fill();
+                
+                ctx.restore();
+            };
+            var strokeArc = function(x, y, w, h, start, stop){
+                if(w < 0){
+			        w = 0;
+			    }
+			    
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.scale(1, h/w);
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, w/2, start * Math.PI / 180, stop * Math.PI / 180);
+                ctx.stroke();
+                
+                ctx.restore();
+            };
+            var ellipse = function(x, y, w, h){
+                arc(x, y, w, h, 0, 360);
+            };
+        </script>
+        
+        <!-- helpful math functions -->
+        <script>
 
-  <body>
-    <p>This is a test</p>
-  </body>
+            // the square root of 2
+            var rt2 = Math.sqrt(2);
+            
+            // convert an angle to radians
+            var angle = function(theta){
+                return theta * Math.PI / 180;
+            };
+            
+            // sin and cos in degrees
+            var sin = function(theta){
+                return Math.sin(theta * Math.PI / 180);
+            };
+            var cos = function(theta){
+                return Math.cos(theta * Math.PI / 180);
+            };
 
+            // atan2 in degrees
+            var atan2 = function(y, x){
+                return (360 + Math.atan2(y, x) * 180 / Math.PI) % 360;
+            };
+            
+            // lerp
+            var lerp = function(num1, num2, amount){
+                return num1 + (num2-num1) * amount;
+            };
+            
+            // constrain
+            var constrain = function(num, min, max){
+                return num < min ? min : num > max ? max : num;
+            };
+            
+            // returns the square of a number
+            var sq = function(num){
+                return num * num;
+            };
+            
+            // distance squared
+            var distSQ = function(x, y, x1, y1){
+                return sq(x1 - x) + sq(y1 - y);
+            };
+
+            // find the closest point on the line segment from x1, y1 to x2, y2 to point x, y
+            var findLinePos = function(x, y, x1, y1, x2, y2){
+
+                // the angle from x1, y1 to x2, y2
+                let theta = atan2(y2 - y1, x2 - x1);
+
+                // the distance along the line segment to the point on the line that is closest to x, y
+                let t = (x - x1) * cos(theta) + (y - y1) * sin(theta);
+
+                // return the closest point if the it's between x1, y1 and x2, y2 and return false otherwise
+                return t < 0 || Math.pow(t, 2) > distSQ(x1, y1, x2, y2) ? false : {
+                    x: x1 + t * cos(theta),
+                    y: y1 + t * sin(theta)
+                };
+
+            };
+
+            // checks if a point x, y is inside a polygon with vertices stored in the points array
+            var isInside = function(x, y, points){
+                let inside = false;
+
+                for(let i = 0; i < points.length; i++){
+                    let pt = points[i],
+                        pt1 = i === points.length - 1 ? points[0] : points[i + 1];
+                    
+                    /*
+                        I got the code in the if statement below from this site:
+                        https://www.jeffreythompson.org/collision-detection/poly-point.php
+                        I do not understand it at all.
+                    */
+
+                    if((pt.y > y) !== (pt1.y > y) && x < (pt1.x - pt.x) * (y - pt.y) / (pt1.y - pt.y) + pt.x){
+                        inside = !inside;
+                    }
+                }
+
+                return inside;
+            };
+
+        </script>
+        
+        <!-- user inputs -->
+        <script>
+            // some helpful keyCode variables
+            var Q = 81, W = 87, E = 69, A = 65, S = 83, D = 68, UP = 38, LEFT = 37, DOWN = 40, RIGHT = 39, SHIFT = 16, SPACE = 32;
+            
+            var keys = [], // keys array
+				pressed = []; // which key (if any) is being pressed this frame
+            
+            // pressing a key
+            var keyPressed = function(event){
+                keys[event.keyCode] = true;
+				pressed[event.keyCode] = true;
+                
+                if([UP, LEFT, DOWN, RIGHT, SPACE].indexOf(event.keyCode) > -1){
+                    event.preventDefault();
+                }
+            };
+            
+            // releasing a key
+            var keyReleased = function(event){
+                keys[event.keyCode] = false;
+            };
+            
+            // moving the mouse
+            var mouseX, mouseY, cursor = "cross";
+            var updateMouse = function(event){
+                mouseX = event.clientX - (window.innerWidth / 2 - canvas.width / 2);
+                mouseY = event.clientY - (window.innerHeight / 2 - canvas.height / 2);
+            };
+            
+            // clicking the mouse
+            var clicked = false;
+            var mouseClicked = function(){};
+            var onClick = function(){
+                mouseClicked();
+                clicked = true;
+            };
+            
+            // resizing the screen
+            var onResize = function(){
+                canvas.width = window.innerWidth;
+                width = canvas.width;
+                
+                canvas.style.left = window.innerWidth / 2 - canvas.width / 2 + "px";
+                canvas.style.top = window.innerHeight / 2 - canvas.height / 2 + "px";
+            };
+        </script>
+
+        <!-- the font -->
+        <script>
+            var setFont = function(sz){
+                ctx.font = sz + "px Times New Roman";
+            };
+        </script>
+
+        <!-- gameplay vars -->
+        <script>
+
+            // the current theme
+            var theme = 1;
+
+            // the current puzzle
+            var curLevel = 0;
+
+            // the most difficult puzzle unlocked
+            var maxLevel = 0;
+            
+            // which tan (if any) the user has selected
+            var selected = false;
+
+            // whether or not a user had a tan selected last frame
+            var pSelected = false;
+
+            // whether or not the puzzle is solved
+            var success = false;
+
+            // updates and draws all the tans at once
+            var displayTans = function(){
+                // sort the tans so that whichever one is selected is on top
+                if(selected){
+                    tans.sort(function(a, b){ return (selected === b) - (selected === a); });
+                }
+
+                // tans
+                for(let i = 0; i < tans.length; i++){
+                    tans[i].update();
+                }
+
+                for(let i = tans.length - 1; i >= 0; i--){
+                    tans[i].draw();
+                }
+
+                // reset at scene transitions
+                if(trans.isNext){
+                    for(let i = 0; i < tans.length; i++){
+                        tans[i].reset();
+                    }
+                }
+            };
+
+            // confetti
+            var confetti = [], throwConfetti = function(){
+                let colors = [
+                    color(255, 255, 0),
+                    color(255, 150, 150),
+                    color(100, 255, 150),
+                    color(255, 150, 100),
+                    color(255, 180, 255)
+                ];
+
+                for(let i = 0; i < 50; i++){
+                    confetti.push({
+                        x: width / 2 - 10 + 20 * Math.random(),
+                        y: height / 2 - 10 + 20 * Math.random(),
+
+                        vel: {
+                            x: -10 + 20 * Math.random(),
+                            y: -20 * Math.random(),
+                        },
+
+                        r: 360 * Math.random(),
+                        rSpeed: -5 + 10 * Math.random(),
+
+                        color: colors[Math.floor(colors.length * Math.random())],
+
+                        type: Math.floor(3 * Math.random())
+                    });
+                }
+            },
+            displayConfetti = function(){
+                for(let i = 0; i < confetti.length; i++){
+                    let part = confetti[i];
+
+                    if(part.vel.y < 20){
+                        part.vel.y++;
+                    }
+
+                    part.x += part.vel.x;
+                    part.y += part.vel.y;
+                    part.r += part.rSpeed;
+
+                    fill(part.color);
+                    with(ctx){
+                        save();
+                        translate(part.x, part.y);
+                        rotate(angle(part.r));
+
+                        beginPath();
+
+                        switch(part.type){
+                            case 0:
+                                moveTo(-5, -5);
+                                lineTo(5, -5);
+                                lineTo(-5, 5);
+                            break;
+
+                            case 1:
+                                moveTo(-5, -5);
+                                lineTo(5, -5);
+                                lineTo(5, 5);
+                                lineTo(-5, 5);
+                            break;
+
+                            case 2:
+                                moveTo(0, -5);
+                                lineTo(5, -5);
+                                lineTo(0, 5);
+                                lineTo(-5, 5);
+                            break;
+                        }
+
+                        fill();
+
+                        restore();
+
+                        if(part.y > height){
+                            confetti.splice(i, 1);
+                            i--;
+                        }
+                    }
+                }
+            };
+
+        </script>
+        
+        <!-- tans -->
+        <script>
+            var tans = (function(){
+                let Tan = function(x, y, r, type){
+
+                    // type of tan (either "bigTriangle", "medTriangle", "smallTriangle", "square", or "parallelogram")
+                    this.type = type;
+
+                    // how close the tan has to be to another in order to snap over to it
+                    this.snapDist = 7;
+
+                    // reset
+                    this.reset = function(){
+
+                        // coordinates
+                        this.x = x < 0 ? width + x : x;
+                        this.y = y < 0 ? height + y : y;
+
+                        // the smallest side length of the smallest triangle
+                        this.side = 50;
+
+                        // vertices
+                        this.points = (
+                            this.type === "bigTriangle" ? [
+                                {x: -this.side * 0.6, y: -this.side * 1.4},
+                                {x: this.side * 1.4, y: this.side * 0.6},
+                                {x: -this.side * 0.6, y: this.side * 0.6}
+                            ] :
+                            this.type === "medTriangle" ? [
+                                {x: 0, y: -this.side * 0.7},
+                                {x: this.side, y: this.side * 0.3},
+                                {x: -this.side, y: this.side * 0.3},
+                            ] :
+                            this.type === "smallTriangle" ? [
+                                {x: -this.side * 0.3, y: -this.side * 0.7},
+                                {x: this.side * 0.7, y: this.side * 0.3},
+                                {x: -this.side * 0.3, y: this.side * 0.3}
+                            ] :
+                            this.type === "square" ? [
+                                {x: -this.side * 0.5, y: -this.side * 0.5},
+                                {x: this.side * 0.5, y: -this.side * 0.5},
+                                {x: this.side * 0.5, y: this.side * 0.5},
+                                {x: -this.side * 0.5, y: this.side * 0.5}
+                            ] :
+                            this.type === "parallelogram" ? [
+                                {x: 0, y: -this.side * 0.5},
+                                {x: this.side, y: -this.side * 0.5},
+                                {x: 0, y: this.side * 0.5},
+                                {x: -this.side, y: this.side * 0.5}
+                            ] :
+                            []
+                        );
+
+                        // initial rotation
+                        this.rotate(r);
+
+                    };
+
+                    this.reset();
+
+                };
+                Tan.prototype.draw = function(){
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+
+                    let pt = this.points[this.points.length - 1];
+
+                    fill(theme === 0 ? color(0, 180, 100) : color(50, 100, 255));
+                    stroke(255 * (1 - theme));
+
+                    ctx.beginPath();
+
+                    ctx.moveTo(pt.x, pt.y);
+
+                    for(let i = 0; i < this.points.length; i++){
+                        pt = this.points[i];
+
+                        ctx.lineTo(pt.x, pt.y);
+                    }
+
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.restore();
+                };
+                Tan.prototype.update = function(){
+                    
+                    // if this tan is selected...
+                    if(selected === this){
+
+                        // if the user presses the mouse...
+                        if(clicked){
+                            selected = false;
+                        }
+
+                        // use left and right or A and D to rotate
+                        if(pressed[LEFT] || pressed[A]){
+                            this.rotate(-45);
+                        }
+
+                        if(pressed[RIGHT] || pressed[D]){
+                            this.rotate(45);
+                        }
+
+                        // use up and down or W and S to flip vertically
+                        if(pressed[UP] || pressed[DOWN] || pressed[W] || pressed[S]){
+                            this.flip();
+                        }
+
+                        // follow the mouse
+                        this.x = mouseX;
+                        this.y = mouseY;
+
+                        // snap to other tans
+                        this.snap();
+
+                    }
+                    
+                    // otherwise...
+                    else{
+
+                        // click to select it
+                        if(!selected && isInside(mouseX - this.x, mouseY - this.y, this.points)){
+                            document.body.style.cursor = "pointer";
+
+                            if(clicked){
+                                selected = this;
+                            }
+                        }
+                    }
+                };
+                Tan.prototype.rotate = function(amt){
+                    for(let i = 0; i < this.points.length; i++){
+                        let pt = this.points[i],
+                            r = Math.sqrt(distSQ(pt.x, pt.y, 0, 0)),
+                            theta = atan2(pt.y, pt.x);
+                        
+                        theta += amt;
+
+                        pt.x = Math.round(r * cos(theta) * 1000) / 1000;
+                        pt.y = Math.round(r * sin(theta) * 1000) / 1000;
+                    }
+                };
+                Tan.prototype.flip = function(){
+                    for(let i = 0; i < this.points.length; i++){
+                        this.points[i].y *= -1;
+                    }
+                };
+                Tan.prototype.snap = function(){
+                    
+                    let targX = this.x, targY = this.y;
+
+                    // loop through all the other tans...
+                    for(let i = 0; i < tans.length; i++){
+                        let tan = tans[i];
+
+                        if(tan === this){
+                            continue;
+                        }
+
+                        // for each tan, loop through all its points
+                        for(let j = 0; j < tan.points.length; j++){
+                            
+                            // the current point
+                            let pt = {
+                                x: tan.points[j].x + tan.x,
+                                y: tan.points[j].y + tan.y
+                            };
+                            
+                            // the next point
+                            let pt1 = (
+                                j === tan.points.length - 1 ?
+                                {
+                                    x: tan.points[0].x + tan.x,
+                                    y: tan.points[0].y + tan.y
+                                } :
+                                {
+                                    x: tan.points[j + 1].x + tan.x,
+                                    y: tan.points[j + 1].y + tan.y
+                                }
+                            );
+                            
+                            // loop through each of this.points
+                            for(let k = 0; k < this.points.length; k++){
+                                let x = this.x + this.points[k].x,
+                                    y = this.y + this.points[k].y;
+
+                                // check if the current point is close enough to the line segment between the two points on the other tan
+                                let linePos = findLinePos(x, y, pt.x, pt.y, pt1.x, pt1.y);
+                                if(distSQ(x, y, linePos.x, linePos.y) < Math.pow(this.snapDist, 2)){
+
+                                    // if it is, snap to it!
+                                    // this.x -= x - linePos.x;
+                                    // this.y -= y - linePos.y;
+                                    targX = this.x + linePos.x - x;
+                                    targY = this.y + linePos.y - y;
+                                }
+                            }
+                        }
+                    
+                        // for each tan, loop through all its points
+                        for(let j = 0; j < tan.points.length; j++){
+
+                            // the current point
+                            let pt = {
+                                x: tan.points[j].x + tan.x,
+                                y: tan.points[j].y + tan.y
+                            };
+                            
+                            // loop through each of this.points
+                            for(let k = 0; k < this.points.length; k++){
+                                let x = this.x + this.points[k].x,
+                                    y = this.y + this.points[k].y;
+
+                                // check if the current point is close enough to the point on the shape
+                                if(distSQ(x, y, pt.x, pt.y) < Math.pow(this.snapDist, 2)){
+
+                                    // if it is, snap to it!
+                                    targX = this.x + pt.x - x;
+                                    targY = this.y + pt.y - y;
+                                }
+                            }
+                        }
+
+                    }
+                    
+                    // follow a similar process for the shape being solved (if there is one)
+                    if(scene === "Game"){
+                        let shape = shapes[curLevel];
+                        
+                        // loop through all the points
+                        for(let i = 0; i < shape.points.length; i++){
+                            for(let j = 0; j < shape.points[i].length; j++){
+
+                                // the current point
+                                let pt = {
+                                    x: width / 2 + shape.points[i][j].x,
+                                    y: height / 2 + shape.points[i][j].y
+                                };
+
+                                // the next point
+                                /*
+                                let pt1 = (
+                                    j === shape.points[i].length - 1 ? {
+                                        x: width / 2 + shape.points[i][0].x,
+                                        y: height / 2 + shape.points[i][0].y
+                                    } :
+                                    {
+                                        x: width / 2 + shape.points[i][j + 1].x,
+                                        y: height / 2 + shape.points[i][j + 1].y,
+                                    }
+                                );
+                                */
+                                
+                                // loop through each of this.points
+                                for(let k = 0; k < this.points.length; k++){
+                                    let x = this.x + this.points[k].x,
+                                        y = this.y + this.points[k].y;
+
+                                    /*
+                                    // check if the current point is close enough to the line segment between the two points on the shape
+                                    let linePos = findLinePos(x, y, pt.x, pt.y, pt1.x, pt1.y);
+                                    if(distSQ(x, y, linePos.x, linePos.y) < Math.pow(this.snapDist, 2)){
+
+                                        // if it is, snap to it!
+                                        targX = this.x + linePos.x - x;
+                                        targY = this.y + linePos.y - y;
+                                    }
+                                    */
+
+                                    // check if the current point is close enough to the point on the shape
+                                    if(distSQ(x, y, pt.x, pt.y) < Math.pow(this.snapDist, 2)){
+
+                                        // if it is, shap to it!
+                                        targX = this.x + pt.x - x;
+                                        targY = this.y + pt.y - y;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    this.x = Math.round(targX * 1000) / 1000;
+                    this.y = Math.round(targY * 1000) / 1000;
+
+                };
+
+                let t1 = new Tan(50, 50, 90, "bigTriangle"),
+                    t2 = new Tan(-50, 50, 180, "bigTriangle"),
+                    t3 = new Tan(width / 3, -100, 0, "medTriangle"),
+                    t4 = new Tan(50, -100, 0, "smallTriangle"),
+                    t5 = new Tan(-50, -100, 270, "smallTriangle"),
+                    t6 = new Tan(width * 2 / 3, -100, 45, "parallelogram"),
+                    t7 = new Tan(width / 2, 50, 0, "square");
+                
+                return [t1, t2, t3, t4, t5, t6, t7];
+
+            })();
+        </script>
+        
+        <!-- puzzles -->
+        <script>
+            
+            // shape constructor
+            var Shape = function(){
+                
+                let args = arguments;
+                this.points = (function(){
+
+                    let array = [[]];
+
+                    for(let i = 0; i < args.length; i++){
+                        let lastIndex = array.length - 1;
+                        
+                        if(typeof args[i] !== "number"){
+                            array.push([]);
+                        }
+
+                        else if(!((i + lastIndex) % 2)){
+                            array[lastIndex].push({x: args[i]});
+                        }
+
+                        else{
+                            array[lastIndex][array[lastIndex].length - 1].y = args[i];
+                        }
+                    }
+
+                    return array;
+                })();
+            };
+            Shape.prototype.draw = function(x, y, s){
+                with(ctx){
+                    save();
+                    translate(x, y);
+
+                    s = s || 1;
+                    scale(s, s);
+
+                    for(let i = 0; i < this.points.length; i++){
+                        beginPath();
+
+                        let pt = this.points[i][this.points[i].length - 1];
+                        moveTo(pt.x, pt.y);
+
+                        for(let j = 0; j < this.points[i].length; j++){
+                            pt = this.points[i][j];
+
+                            lineTo(pt.x, pt.y);
+                        }
+
+                        fill();
+                    }
+
+                    restore();
+                }
+            };
+
+            // a list of shapes (nearly all of the puzzles are shamelessly stolen from the internet)
+            var shapes = [
+                /* swan */ new Shape(-75, 0, -25, -50, -75, -50, -25, -100, 25, -100, 25, -50, -25, 0, -25 + 100 * rt2, 0, -25 + 100 / rt2, 100 / rt2, 75, 100, -25, 100, -75, 50),
+                /* cat */ new Shape(-50, 0, 0, -50, -50 / rt2, -50 - 50 / rt2, -50 / rt2, -50 - 75 * rt2, 0, -50 - 50 * rt2, 50 / rt2, -50 - 75 * rt2, 50 / rt2, -50 - 50 / rt2, 0, -50, 100 / rt2, -50 + 100 / rt2, 100 / rt2, 100 / rt2, 50 + 100 / rt2, -50 + 100 / rt2, 50 + 100 / rt2, 100 / rt2, 100 / rt2, 50 + 100 / rt2, -100 + 100 / rt2, 50 + 100 / rt2, 0, -50 + 100 * rt2, 0, 50),
+                /* avatar Aang */ new Shape(0, -50, 100, -50, 25, 25, 75, 75, 50 + 50 * rt2, 75, 50 + 25 * rt2, 75 + 25 * rt2, 50, 75, -25, 75, -50, 100, -100, 100, -125, 125, -125, 75, -75, 75, -50, 50, -100, 50, 0, -50, -25 * rt2, -50 - 25 * rt2, 0, -50 - 50 * rt2, 25 * rt2, -50 - 25 * rt2),
+                /* rabbit */ new Shape(25, -50, 25, -75, 0, -75, -50, -125, 0, -125, 50, -75, 75, -75, 75, -25, 25, -25, 25, 0, 25 + 25 * rt2, 25 * rt2, 25, 50 * rt2, 25, 50, -75 + 50 * rt2, 150 - 50 * rt2, -75 + 75 * rt2, 150 - 25 * rt2, -75 + 50 * rt2, 150, -75, 150, -75, 50),
+                /* vulture */ new Shape(-50, 100, -50, 50 * rt2, -100, 50 + 50 * rt2, -150, 50 + 50 * rt2, -100, 50 * rt2, -50 - 50 * rt2, 50 * rt2, -50 + 50 * rt2, -50 * rt2, -50 + 75 * rt2, -25 * rt2, -50 + 100 * rt2, -50 * rt2, -50 + 150 * rt2, 0, 50, 0, -50 + 25 / rt2, 100 - 25 / rt2, -50 + 75 / rt2, 100 + 25 / rt2, -50 - 25 / rt2, 100 + 25 / rt2, -50, 100),
+                /* heron */ new Shape(-50, 0, 50 - 100 * rt2, 0, 50 - 100 / rt2, -100 / rt2, 50 - 50 / rt2, -50 / rt2, 50 - 50 / rt2, -150 / rt2, 50, -100 * rt2, 50 + 50 * rt2, -50 * rt2, 50, -50 * rt2, 50 + 50 / rt2, -50 / rt2, -50 + 25 / rt2, 100 - 25 / rt2, -50 + 25 / rt2, 100 + 75 / rt2, 0, 150 + 50 / rt2, -50, 150 + 50 / rt2, -50, 100 + 50 / rt2, -50 - 25 / rt2, 100 + 25 / rt2, -50, 100),
+                /* candle */ new Shape(25 * rt2, 25 - 25 * rt2, 25 * rt2, 25 + 75 * rt2, 50 * rt2, 25 + 100 * rt2, -50 * rt2, 25 + 100 * rt2, -25 * rt2, 25 + 75 * rt2, -25 * rt2, 25 - 25 * rt2, -50, -25, -25, -25, -25, -75, 0, -75, -50, -125, -50, -175, 0, -125, 0, -75, 25, -75, 25, -25, 50, -25),
+                /* shuriken */ new Shape(-25, -25, -25, -125, 75, -25, 125, -25, 25, 75, 25, 125, -75, 25, -125, 25, -25, -75, -25, 25, 25, 25, 25, -25, -25, -25),
+                /* parrot */ new Shape(0, 50, -50, 0, -50, -50, -50 * rt2, -50, -50 * rt2, -100 + 50 * rt2, -75 * rt2, -100 + 25 * rt2, -50 * rt2, -100, 50 - 50 * rt2, -100, 50 - 50 * rt2, -50 - 50 * rt2, 50, -50, 50, 50, 50 * rt2, 50 * rt2, 25 * rt2, 75 * rt2, 25 * rt2, 125 * rt2, 0, 100 * rt2),
+                /* square */ new Shape(-50 * rt2, -50 * rt2, 50 * rt2, -50 * rt2, 50 * rt2, 50 * rt2, -50 * rt2, 50 * rt2),
+                /* fish */ new Shape(0, 50, 25, 50, 25, 100, -25, 50, -100, 50, -100 - 25 * rt2, 50 - 25 * rt2, -100, 50 - 50 * rt2, -100 + 50 * rt2, 50 - 50 * rt2, 0, -50, 50, -50, 50, -150, 100, -100, 150, -100),
+                /* diamond */ new Shape(-50 * rt2, -50, 0, -50 - 50 * rt2, 50 * rt2, -50, 100, -50, 50 * rt2, 50 - 50 * rt2, 50 * rt2, 50, 0, 50 + 50 * rt2, -50 * rt2, 50, -25 * rt2, 50 - 25 * rt2, 25 * rt2, 50 - 25 * rt2, 50, 0, 50, -50, 50 - 50 * rt2, -50, 50 - 50 * rt2, 1, -50 * rt2, 51),
+                /* whale (I made this one!) */ new Shape(-50, -50, 50, -50, 100, 0, 100, 50, -50, 50, -100, 0, -150, 0, -50, -100),
+                /* teapot */ new Shape(-50, -50, 0, -100, 50, -50, 50, -25, 100 - 25 * rt2, 25 - 25 * rt2, 100, 25 - 50 * rt2, 100 + 25 * rt2, 25 - 25 * rt2, 100, 25, 50, 25, 50, 50, -50, 50, -50 - 25 * rt2, 50 - 25 * rt2, -50 - 25 * rt2, 100 - 75 * rt2, -100 - 25 * rt2, 50 - 75 * rt2, -50 - 25 * rt2, 50 - 75 * rt2, -50, 50 - 50 * rt2),
+                /* mountains */ new Shape(-25 - 100 * rt2, 50, -25 - 50 * rt2, 50 - 50 * rt2, -75, 0, -50 * rt2, 0, 0, -50 * rt2, 50 * rt2, 0, 75, 0, 25 + 50 * rt2, 50 - 50 * rt2, 25 + 100 * rt2, 50),
+                /* boat */ new Shape(-50 * rt2, 50 * rt2, -50 - 50 * rt2, -50 + 50 * rt2, 50 - 50 * rt2, -50 + 50 * rt2, 50 - 50 * rt2, 0, -50 - 50 * rt2, 0, 50 - 50 * rt2, -100, 50 - 50 * rt2, -50 - 50 * rt2, 50 - 25 * rt2, -50 - 25 * rt2, 50 - 25 * rt2, -50 + 25 * rt2, 0, 0, 25 * rt2, 25 * rt2, 25 * rt2, -50 + 25 * rt2, 50 + 25 * rt2, -50 + 25 * rt2, 50 + 25 * rt2, 25 * rt2, 75 * rt2, 25 * rt2, 50 * rt2, 50 * rt2),
+                /* missing piece */ new Shape(-75, -75, 75, -75, 75, 75, -75, 75, -75, 25, -25, 25, 25, -25, -25, -25, -75, 25),
+                /* crab */ new Shape(-25 * rt2, -25 * rt2, 0, -50 * rt2, 25 * rt2, -25 * rt2, 50 * rt2, -50 * rt2, 100 * rt2, 0, 50 * rt2, 50 * rt2, 50 * rt2, 0, 25 * rt2, 25 * rt2, 0, 0, -25 * rt2, 25 * rt2, -50 * rt2, 0, -50 * rt2, 50 * rt2, -100 * rt2, 0, -50 * rt2, -50 * rt2),
+                /* grinning face */ new Shape(0, 0, -50 + 25 * rt2, -50 + 25 * rt2, -50, -50 + 50 * rt2, -50, 0, -100, 0, -50, -50, -50, -50 - 50 * rt2, -100 + 50 * rt2, -100, -50 + 50 * rt2, -100, 50 * rt2, -50, 50, -50, 50, 50, 25 * rt2, 25 * rt2, 25 * rt2, 100 + 25 * rt2, -100 + 25 * rt2, 100 + 25 * rt2, 0, 50 * rt2, -25 * rt2, 25 * rt2),
+                /* another boat */ new Shape(0, -100, 0, -100 * rt2, 100 * rt2, 0, 50 * rt2, 0, -50 + 50 * rt2, 50, -100 + 50 * rt2, 50, -150 + 50 * rt2, 0, -100, 0),
+            ];
+
+        </script>
+
+        <!-- buttons -->
+        <script>
+            var Button = function(txt, y, onClick){
+                
+                // text to display
+                this.txt = txt;
+
+                // y-coordinate
+                this.y = y;
+
+                // what to do on click
+                this.onClick = onClick;
+
+                // the width of the blue bar
+                this.w = 0;
+                this.wSpeed = 0;
+
+            };
+            Button.prototype.draw = function(){
+
+                fill(theme === 0 ? color(0, 180, 100) : color(50, 100, 255));
+                ctx.fillRect(width / 2 - this.w / 2, this.y - 15, this.w, 30);
+
+                // the text
+                setFont(25);
+                let tw = ctx.measureText(this.txt).width;
+
+                fill(this.w > tw ? 255 * theme : 255 * (1 - theme));
+                ctx.fillText(this.txt, width / 2 - tw / 2, this.y + 8);
+
+            };
+            Button.prototype.update = function(){
+                
+                setFont(20);
+                let tw = ctx.measureText(this.txt).width;
+
+                if(mouseX > width / 2 - tw && mouseX < width / 2 + tw / 2 && mouseY > this.y - 15 && mouseY < this.y + 15){
+                    document.body.style.cursor = "pointer";
+
+                    if(this.w < width){
+                        this.wSpeed += 5;
+                        this.w += this.wSpeed;
+                    }
+
+                    else{
+                        this.w = width;
+                        this.wSpeed = 0;
+                    }
+
+                    let t = this;
+                    mouseClicked = function(){
+                        if(typeof t.onClick === "string"){
+                            trans.active = true;
+                            trans.next = t.onClick;
+                        }
+
+                        else{
+                            t.onClick();
+                        }
+                    };
+                }
+
+                else{
+                    if(this.w > 0){
+                        this.wSpeed += 5;
+                        this.w -= this.wSpeed;
+                    }
+
+                    else{
+                        this.w = 0;
+                        this.wSpeed = 0;
+                    }
+                }
+
+                if(trans.isNext){
+                    this.w = 0;
+                }
+
+            };
+            Button.prototype.display = function(){
+                this.update();
+                this.draw();
+            };
+
+            var playBtn = new Button("Start Game", height - 220, "Map"),
+                instBtn = new Button("Instructions", height - 170, "Inst"),
+                sandBtn = new Button("Sandbox", height - 120, "Sand"),
+                backBtn = new Button("Back", height - 50, "Menu"),
+                quitBtn = new Button("Quit Game", height - 50, "Map");
+
+        </script>
+
+        <!-- title -->
+        <script>
+            var drawTitle = function(){
+                
+                // text
+                fill(255 * (1 - theme));
+                setFont(60);
+                ctx.fillText("TANGRAMS", width / 2 - 260, 175);
+
+                // number 2
+                fill(theme === 0 ? color(0, 180, 100) : color(50, 100, 255));
+                stroke(255 * (1 - theme));
+
+                with(ctx){
+                    save();
+                    translate(width / 2 + 100, 250);
+
+                    beginPath();
+
+                    moveTo(50, -150);
+                    lineTo(0, -150);
+                    lineTo(50, -200);
+                    lineTo(50, -150);
+
+                    moveTo(50, -200);
+                    lineTo(150, -200);
+                    lineTo(150, -100);
+                    lineTo(50, -200);
+
+                    moveTo(100, -150);
+                    lineTo(50, -100);
+                    lineTo(150, -100);
+
+                    moveTo(50, -100);
+                    lineTo(50, 0);
+                    lineTo(150, -100);
+
+                    moveTo(50, -100);
+                    lineTo(0, -50);
+                    lineTo(50, -50);
+
+                    moveTo(0, -50);
+                    lineTo(0, 0);
+                    lineTo(50, 0);
+                    lineTo(50, -50);
+
+                    moveTo(50, 0);
+                    lineTo(50 + 50 * rt2, 0);
+                    lineTo(50 + 50 * rt2 + 50 / rt2, -50 / rt2);
+                    lineTo(50 + 50 / rt2, -50 / rt2);
+
+                    fill();
+                    stroke();
+
+                    restore();
+                }
+            };
+        </script>
+        
+        <!-- scenes -->
+        <script>
+			// the current scene
+			var scene = "Menu";
+
+            // scene transitions
+            var trans = {
+                active: false, // whether or not a transition is happening
+                size: 0, // how far we are through the transition (0-510)
+                next: function(){}, // what to do in the middle of the transition
+                isNext: false // if the middle of the transition has happened yet
+            };
+            var changeScene = function(){
+                // if there's a transition happening...
+                if(trans.active){
+                    // increment trans.size
+                    trans.size += 10;
+                    
+                    // if we're still in the first half, fade in
+                    if(trans.size < 255){
+                        fill(theme * 255, trans.size);
+                    }
+                    
+                    // if we're in the second half...
+                    else if(trans.size < 510){
+                        // fade out
+                        fill(theme * 255, 510 - trans.size);
+
+                        if(!trans.isNext){
+
+                            // the middle of the transition is passed; so set trans.isNext to true
+                            trans.isNext = true;
+                        
+                            // if trans.next is a function, call it
+                            if(typeof trans.next === "function"){
+                                trans.next();
+                            }
+                            
+                            // otherwise, it's the name of the next scene
+                            else{
+                                scene = trans.next;
+                            }
+
+                        }
+                    }
+                    
+                    // if the transition is finished...
+                    else{
+                        // remove the white over the top
+                        fill(theme * 255, 0);
+                        
+                        // reset variables for next transition
+                        trans.active = false;
+                        trans.size = 0;
+                        trans.isNext = false;
+                    }
+                    
+                    // draw the white rectangle overtop everything else
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    // set globalAlpha to 1 so tranparency doesn't affect other graphics
+                    ctx.globalAlpha = 1;
+                }
+            };
+			
+			// draws the current scene
+            var drawScene = function(){
+                switch(scene){
+					case "Menu":
+
+                        // background
+                        fill(255 * theme);
+                        ctx.fillRect(0, 0, width, height);
+
+                        // the title
+                        drawTitle();
+                        
+                        // buttons
+                        playBtn.display();
+                        instBtn.display();
+                        sandBtn.display();
+
+                        // theme
+                        fill(255 * (1 - theme));
+                        if(mouseX > width - 50 && mouseY > height - 50){
+                            document.body.style.cursor = "pointer";
+                            fill(theme === 0 ? color(0, 180, 100) : color(50, 100, 255));
+
+                            mouseClicked = function(){
+                                theme = theme === 0 ? 1 : 0;
+                                document.body.style.backgroundColor = "rgb(" + theme * 255 + ", " + theme * 255 + ", " + theme * 255 + ")";
+                            };
+                        }
+
+                        if(theme === 0){
+                            ellipse(width - 25, height - 25, 25, 25);
+
+                            fill(255 * theme);
+                            ellipse(width - 30, height - 25, 18, 18);
+                        }
+
+                        else{
+                            ellipse(width - 25, height - 25, 15, 15);
+
+                            for(let i = 0; i < 360; i += 45){
+                                ctx.save();
+                                ctx.translate(width - 25, height - 25);
+                                ctx.rotate(angle(i));
+
+                                ctx.fillRect(10, -1, 5, 2);
+
+                                ctx.restore();
+                            }
+                        }
+
+                    break;
+
+                    case "Inst":
+                        
+                        // background
+                        fill(255 * theme);
+                        ctx.fillRect(0, 0, width, height);
+
+                        // title
+                        drawTitle();
+
+                        // text
+                        fill(255 * (1 - theme));
+                        setFont(20);
+                        
+                        function writeText(m, y){
+                            let tw = ctx.measureText(m).width;
+                            ctx.fillText(m, width / 2 - tw / 2, y);
+                        };
+
+                        writeText("Put the seven tans together to make the picture!", height / 2 + 50);
+                        writeText("Click on a tan to pick it up or place it.", height / 2 + 80);
+                        writeText("Press left and right or A and D to rotate it.", height / 2 + 110);
+                        writeText("Press up and down or W and S to flip it over.", height / 2 + 140);
+
+                        // back button
+                        backBtn.display();
+
+                    break;
+                    
+                    case "Sand":
+                        
+                        // background
+                        fill(255 * theme);
+                        ctx.fillRect(0, 0, width, height);
+
+                        // update and draw all the tans
+                        displayTans();
+
+                        // back button
+                        backBtn.display();
+
+                    break;
+                    
+                    case "Map":
+
+                        // background
+                        fill(255 * theme);
+                        ctx.fillRect(0, 0, width, height);
+
+                        // level buttons
+                        function lvlBtn(x, y, lvl){
+                            ctx.save();
+                            ctx.translate(x, y);
+
+                            // rounded rectangle
+                            let sz = 100, cr = 15;
+
+                            // clicking
+                            if(lvl <= maxLevel){
+                                if(mouseX > x - sz / 2 && mouseX < x + sz / 2 && mouseY > y - sz / 2 && mouseY < y + sz / 2){
+                                    document.body.style.cursor = "pointer";
+                                    sz = 105;
+
+                                    mouseClicked = function(){
+                                        curLevel = lvl;
+
+                                        trans.active = true;
+                                        trans.next = "Game";
+                                    };
+                                }
+                            }
+
+                            fill(lvl < maxLevel ? color(180) : lvl === maxLevel ? color(230) : color(210));
+                            with(ctx){
+                                beginPath();
+
+                                moveTo(-sz / 2, -sz / 2 + cr);
+                                arc(-sz / 2 + cr, -sz / 2 + cr, cr, angle(180), angle(270));
+                                arc(sz / 2 - cr, -sz / 2 + cr, cr, angle(270), angle(360));
+                                arc(sz / 2 - cr, sz / 2 - cr, cr, 0, angle(90));
+                                arc(-sz / 2 + cr, sz / 2 - cr, cr, angle(90), angle(180));
+
+                                fill();
+                            }
+
+                            // text
+                            fill(lvl > maxLevel ? color(150) : color(0));
+
+                            setFont(20);
+                            let m = "Level " + (lvl + 1), tw = ctx.measureText(m).width;
+                            ctx.fillText(m, -tw / 2, -25);
+
+                            if(lvl >= maxLevel){
+                                setFont(50);
+                                m = "?", tw = ctx.measureText(m).width;
+                                ctx.fillText(m, -tw / 2, 30);
+                            }
+
+                            // puzzle shape
+                            if(lvl < maxLevel){
+                                fill(0);
+                                shapes[lvl].draw(0, 10, 0.2);
+                            }
+
+                            ctx.restore();
+                        };
+
+                        var spacing = 115;
+                        for(let i = 0; i < shapes.length; i++){
+                            let x = width / 2 + spacing * (i % 5 - 2),
+                                y = height / 2 + spacing * (Math.floor(i / 5) - 1.75);
+                            
+                            lvlBtn(x, y, i);
+                        }
+
+                        // back button
+                        backBtn.display();
+
+                    break;
+
+					case "Game":
+
+                        // background
+                        fill(theme * 255);
+                        ctx.fillRect(0, 0, width, height);
+
+                        // the puzzle being solved
+                        fill(255 * (1 - theme), 100);
+                        shapes[curLevel].draw(width / 2, height / 2);
+
+                        // update pSelected
+                        pSelected = !!selected;
+
+                        // update and draw all the tans
+                        displayTans();
+
+                        // check for success every time the user sets down a tan
+                        if(pSelected && !selected){
+                            success = true;
+
+                            for(let y = (height / 2) % 10 + 1; y < height; y += 10){
+                                for(let x = (width / 2) % 10 + 3; x < width; x += 10){
+                                    let isInTan = false, isInShape = false;
+
+                                    for(let t = 0; t < tans.length; t++){
+                                        let tan = tans[t];
+
+                                        if(isInside(x - tan.x, y - tan.y, tan.points)){
+                                            isInTan = true;
+                                            break;
+                                        }
+                                    }
+
+                                    for(let s = 0; s < shapes[curLevel].points.length; s++){
+                                        let points = shapes[curLevel].points[s];
+
+                                        if(isInside(x - width / 2, y - height / 2, points)){
+                                            isInShape = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if(isInTan !== isInShape){
+                                        console.log(x + ", " + y);
+                                        success = false;
+                                        break;
+                                    }
+                                }
+
+                                if(!success){
+                                    break;
+                                }
+                            }
+
+                            if(success){
+                                throwConfetti();
+                            }
+                        }
+
+                        fill(255 * (1 - theme));
+                        ellipse(701, 351, 5, 5);
+
+                        // confetti
+                        displayConfetti();
+
+                        // back to map
+                        if(success && confetti.length === 0){
+                            trans.active = true;
+                            trans.next = function(){
+                                scene = "Map";
+                                success = false;
+
+                                if(curLevel === maxLevel){
+                                    maxLevel++;
+                                }
+                            };
+                        }
+
+                        // quit button
+                        quitBtn.display();
+
+					break;
+                }
+            };
+        </script>
+        
+        <!-- animation loop -->
+        <script>
+            // function to be called each frame
+            var animate = function(){
+
+                // reset cursor
+                document.body.style.cursor = "auto";
+
+                // reset mouseClicked
+                if(mouseClicked){ mouseClicked = function(){}; }
+                
+                // reset canvas transform
+                ctx.resetTransform();
+                
+                // draw the current scene
+                drawScene();
+				
+				// check for scene transitions
+				changeScene();
+				
+				// reset pressed
+				if(pressed){ pressed = []; }
+
+                // reset clicked
+                if(clicked){ clicked = false; }
+            };
+            
+            // how many frames we've done so far
+			var frameCount = 0;
+			
+			// frame rate in fps
+			var frameRate = 60;
+			
+			// call animate() each frame
+			setInterval(function() {
+                frameCount++;
+                animate()
+            }, 1000 / frameRate);
+        </script>
+    </head>
+    
+    <!-- body tag, with lots of event listeners -->
+    <body onkeydown="keyPressed(event)" onkeyup="keyReleased(event)" onclick="onClick(event)" onmousemove="updateMouse(event)" onmousedown="(function(){ mouseIsPressed = true; })()" onmouseup="(function(){ mouseIsPressed = false; })()" onresize="onResize()"></body>
+    
 </html>
-
-
